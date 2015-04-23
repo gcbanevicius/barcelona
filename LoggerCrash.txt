@@ -1,0 +1,14 @@
+I/Logger  ( 4353): Enter incrementCounter at time: 1425434401407
+I/Logger  ( 4353): Enter updateCounterTextView at time: 1425434401407
+I/Logger  ( 4353): Exit updateCounterTextView at time: 1425434401409
+I/Logger  ( 4353): Exit incrementCounter at time: 1425434401410
+I/Logger  ( 4353): Enter incrementCounter at time: 1425434401925
+I/Logger  ( 4353): Enter updateCounterTextView at time: 1425434401926
+I/Logger  ( 4353): Exit updateCounterTextView at time: 1425434401928
+I/Logger  ( 4353): Exit incrementCounter at time: 1425434401929
+I/Logger  ( 4353): Enter incrementCounter at time: 1425434402684
+I/Logger  ( 4353): Enter updateCounterTextView at time: 1425434402684
+I/Logger  ( 4353): Exit updateCounterTextView at time: 1425434402685
+I/Logger  ( 4353): Exit incrementCounter at time: 1425434402686
+I/Logger  ( 4353): Enter incrementCounter at time: 1425434403097
+I/Logger  ( 4353): Enter updateCounterTextView at time: 1425434403097
