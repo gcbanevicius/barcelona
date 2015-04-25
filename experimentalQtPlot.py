@@ -7,13 +7,8 @@ import re
 import sys
 import random
 
-#from PyQt4 import QtGui, QtCore
 from pyqtgraph.Qt import QtGui, QtCore
 import pyqtgraph as pg
-import pyqtgraph.widgets.MatplotlibWidget as MatplotlibWidget
-
-from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.figure import Figure
 
 import numpy as np
 
@@ -21,6 +16,8 @@ import generateCallgraph
 
 
 class ColorBlock:
+    
+    """Class with information about color-coded method rectangles"""
 
     def __init__(self, color, startTime, endTime):
         self.color = color
@@ -38,6 +35,8 @@ class ColorBlock:
 
 class ColorBlockList:
 
+    """A sequential list of all color blocks"""
+
     def __init__(self):
         self.colorBlockList = []
 
@@ -50,7 +49,11 @@ class ColorBlockList:
     def length(self):
         return len(self.colorBlockList)
 
+
 class MyPopup(QtGui.QWidget):
+
+    """Class for popup window when you hit a method button"""
+
     def __init__(self, startTime, endTime, avgPower):
         QtGui.QWidget.__init__(self)
         self.startTime = startTime
@@ -69,18 +72,39 @@ class MyPopup(QtGui.QWidget):
 
 class MethodInfo:
 
+    """Wraps relevant info about a method"""
+
     def __init__(self, methodName, startTime, endTime, avgPower):
         self.methodName = methodName
         self.startTime = startTime
         self.endTime = endTime
         self.avgPower = avgPower
 
+class MyMethodButton(QtGui.QHBoxLayout):
+
+    """Wraps consituent parts of a method button"""
+
+    def __init__(self, indentLabel, colorLabel, button, *args, **kwargs):
+        self.indentLabel = indentLabel
+        self.colorLabel = colorLabel
+        self.button = button
+        super(MyMethodButton, self).__init__(*args, **kwargs)
+
+        self.addWidget(indentLabel)
+        self.addWidget(colorLabel)
+        self.addWidget(button)
+
+
 class MyMethodButtonPanel(QtGui.QVBoxLayout):
 
-    def __init__(self, methodTups, colorBlockList, colorMappings, *args, **kwargs):
+    """Vertical layout containing all method buttons"""
+
+    def __init__(self, appWindow, methodTups, colorBlockList, colorMappings, *args, **kwargs):
+        self.appWindow = appWindow
         self.methodTups = methodTups
         self.colorBlockList = colorBlockList
         self.colorMappings = colorMappings
+        self.buttonList = []
 
         self.colorHash = {
             'red': QtCore.Qt.red,
@@ -91,26 +115,12 @@ class MyMethodButtonPanel(QtGui.QVBoxLayout):
 
         super(MyMethodButtonPanel, self).__init__(*args, **kwargs)
         
-
         # this is a mapping of method-name-buttons to relevant info
         self.buttonHash = {}
+        self.addMethodNames(self.colorMappings)
+       
 
-        scrollWidget = QtGui.QWidget()
-        textVBox = QtGui.QVBoxLayout()
-        textVBox.addStretch(1)
-
-        self.addMethodNames(textVBox, self.colorMappings)
-        self.scrollArea = pg.QtGui.QScrollArea()
-        self.scrollArea.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOn)
-        self.scrollArea.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
-        self.scrollArea.setWidgetResizable(False)
-        #self.scrollArea.setMinimumWidth(300)
-        #self.scrollArea.setMinimumHeight(800)
-        self.scrollArea.setSizePolicy(QtGui.QSizePolicy.Fixed, QtGui.QSizePolicy.Expanding)
-        self.scrollArea.setWidget(scrollWidget)
-        self.scrollArea.setLayout(textVBox)
-
-    def addMethodNames(self, textVBox, colorMappings):
+    def addMethodNames(self, colorMappings):
 
         # get callstack and add buttons
         prevDepth = -1
@@ -138,7 +148,9 @@ class MyMethodButtonPanel(QtGui.QVBoxLayout):
                 print("Argh... button was already in HashTable!", sys.stderr)
                 sys.exit(1)
 
-            button.installEventFilter(self)
+            # add buttons to a list, to be referenced by eventFilter 
+            # in the main ApplicationWindow class
+            self.buttonList.append(button)
 
             # an ugly check... since we're using fake data in development
             if (methodTup[1] * 5) >= len(colorMappings):
@@ -171,44 +183,9 @@ class MyMethodButtonPanel(QtGui.QVBoxLayout):
             #    colorLabel.setVisible(False)
             #    button.setVisible(False)
 
-            container.addWidget(indentLabel)
-            container.addWidget(colorLabel)
-            container.addWidget(button)
-            textVBox.addLayout(container)
+            containerButton = MyMethodButton(indentLabel, colorLabel, button)
+            self.addLayout(containerButton)
 
-    def eventFilter(self, object, event):
-
-        if event.type() == QtCore.QEvent.MouseButtonPress:
-            hashVal = hash(object) # the object is the button
-            startTime = self.buttonHash[hashVal].startTime #[0]
-            #position = startTime * 5 # time is recorded in fifths of a millisecond
-            #self.slider.setValue(position)
-            position = startTime / 1000
-            self.p1.setXRange(position, position + 0.25)
-            
-
-            return True
-
-        if event.type() == QtCore.QEvent.MouseButtonDblClick:
-            hashVal = hash(object) # the object is the button
-            methodInfo = self.buttonHash[hashVal]
-            startTime = methodInfo.startTime
-            endTime = methodInfo.endTime
-            avgPower = methodInfo.avgPower
-            self.popup = MyPopup(startTime, endTime, avgPower)
-            ### oooo baby, it's all here!
-            cursor = QtGui.QCursor()
-            x = cursor.pos().x()
-            y = cursor.pos().y()
-            self.popup.setGeometry(QtCore.QRect(x, y+50, 400, 200))
-            self.popup.show()
-
-            # for now, double click will also display children
-
-            return True
-
-        return False
- 
 
 class MyPlot:
 
@@ -237,19 +214,6 @@ class MyPlot:
         y = np.array(self.vals, dtype='float_')
         plotItem.plot(x, y, pen='b')
 
-
-    comm = """
-    def changeSliderValue(self, newStart):
-        newEnd = newStart + self.MAX_PNTS
-        l, = self.axes.plot(self.times[newStart:newEnd], self.vals[newStart:newEnd])
-        self.axes.set_autoscalex_on(False)
-        self.axes.set_xlim([newStart*0.0002,newEnd*0.0002])
-        self.axes.set_xlabel('Time (sec)')
-        self.axes.set_ylim([0.0, self.maxPowerVal])
-        self.axes.set_ylabel('Power (mW)')
-        self.drawMethodRects(newStart)
-        self.draw_idle()
-        """
 
     def drawMethodRects(self, startVal):
         #return True
@@ -284,9 +248,6 @@ class ApplicationWindow(QtGui.QWidget):
     def __init__(self):
         super(ApplicationWindow, self).__init__()
 
-        # hash for buttons
-        self.buttonHash = {}
-	
         # popup window for hover on button
         self.popup = None
 
@@ -301,20 +262,6 @@ class ApplicationWindow(QtGui.QWidget):
         # this is the super fun part where we create the color scheme!
         self.colorBlockList = ColorBlockList()
         colors = ['red', 'green', 'blue', 'yellow' ]
-
-        # create the graph and slider
-        scrollWidget = QtGui.QWidget()
-        textVBox = QtGui.QVBoxLayout()
-        textVBox.addStretch(1)
-
-        self.colorHash = {
-            'red': QtCore.Qt.red,
-            'green': QtCore.Qt.green,
-            'blue': QtCore.Qt.blue,
-            'yellow': QtCore.Qt.yellow,
-        }
-
-
         mod = len(colors)
         i = 0
         for methodTup in self.methodTups:
@@ -337,23 +284,24 @@ class ApplicationWindow(QtGui.QWidget):
 
         colorMappings = self.createColorMappings(self.colorBlockList)
 
+        gl.nextRow()
+        buttonVBox = MyMethodButtonPanel(self, self.methodTups, self.colorBlockList, colorMappings)
+        scrollWidget = QtGui.QWidget()
+        scrollWidget.setLayout(buttonVBox)
 
-        self.addMethodNames(textVBox, colorMappings)
-        scrollWidget.setLayout(textVBox)
-        scrollArea = pg.QtGui.QScrollArea()
+        ## testing the eventFilter... and it works!
+        self.buttonHash = buttonVBox.buttonHash
+        for b in buttonVBox.buttonList:
+            b.installEventFilter(self)
+
+        scrollArea = QtGui.QScrollArea()
         scrollArea.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOn)
         scrollArea.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         scrollArea.setWidgetResizable(False)
-        #scrollArea.setMinimumWidth(300)
-        #scrollArea.setMinimumHeight(800)
         scrollArea.setSizePolicy(QtGui.QSizePolicy.Fixed, QtGui.QSizePolicy.Expanding)
         scrollArea.setWidget(scrollWidget)
 
-        gl.nextRow()
-        proxyWdg = pg.QtGui.QGraphicsProxyWidget()
-        #vb1 = pg.ViewBox()
-        #gl.addItem(scrollWidget)
-        #gl.addItem(vb1)
+        proxyWdg = QtGui.QGraphicsProxyWidget()
         proxyWdg.setWidget(scrollArea)
         gl.addItem(proxyWdg)
 
@@ -361,74 +309,7 @@ class ApplicationWindow(QtGui.QWidget):
         self.p1.setMouseEnabled(y=False)
         self.p1.setXRange(.01, 0.04)
         myGraph = MyPlot(self.p1, self.colorBlockList, colorMappings)
-        #p1 = gl.addPlot(title="Plot 1")
         
-
-    def addMethodNames(self, textVBox, colorMappings):
-
-        # get callstack and add buttons
-        prevDepth = -1
-        prevParentList = []
-        for methodTup in self.methodTups:
-            container = QtGui.QHBoxLayout()
-            button = QtGui.QPushButton(methodTup[0])
-            button.setFocusPolicy(QtCore.Qt.NoFocus)
-            #button.setFlat(True)
-            button.setStyleSheet("""
-                .QPushButton {
-                    text-align: left;
-                    padding: 5px
-                }
-            """)
-
-            hashVal = hash(button)
-            if hashVal not in self.buttonHash:
-                # NB!!! Fix these hash vals!!!
-                randval = random.randrange(1000, 5000)
-                endTime = methodTup[1] + random.randrange(100,500)
-                methodInfo = MethodInfo(methodTup[0], methodTup[1], endTime, randval)
-                self.buttonHash[hashVal] = methodInfo
-            else:
-                print("Argh... button was already in HashTable!", sys.stderr)
-                sys.exit(1)
-
-            button.installEventFilter(self)
-
-            # an ugly check... since we're using fake data in development
-            if (methodTup[1] * 5) >= len(colorMappings):
-                break
-
-            colorIdx = int(methodTup[1] * 5) # LOVE this stuff...
-            colorBlockIdx = colorMappings[colorIdx]
-            colorBlock = self.colorBlockList.get(colorBlockIdx)
-            colorName = colorBlock.color
-            color = self.colorHash[colorName]
-
-            # set color
-            palette = QtGui.QPalette()
-            palette.setColor(QtGui.QPalette.Background, self.colorHash[colorName])
-            colorLabel = QtGui.QLabel("    ")
-            colorLabel.setFixedSize(25, 25)
-            colorLabel.setAutoFillBackground(True)
-            colorLabel.setPalette(palette)
-
-            # set indentation
-            indent = " " * (4 * methodTup[3])
-            #print((4*methodTup[3]), indent, "*")
-            #indentLabel = QtGui.QLabel(indent)
-            indentLabel = QtGui.QLabel(" ")
-            indentLabel.setFixedSize(40*methodTup[3], 25)
-            
-            # hide children
-            #if methodTup[3] != 0:
-            #    indentLabel.setVisible(False)
-            #    colorLabel.setVisible(False)
-            #    button.setVisible(False)
-
-            container.addWidget(indentLabel)
-            container.addWidget(colorLabel)
-            container.addWidget(button)
-            textVBox.addLayout(container)
 
     def createColorMappings(self, colorBlockList):
 
@@ -450,14 +331,6 @@ class ApplicationWindow(QtGui.QWidget):
                     colorMappings.append(colorBlockIdx)
 
         return colorMappings
-
-    comm = """
-    def changeVisibility(self, object):
-
-        visible = button.isVisible()
-        object.setVisible(not visible)
-    """
-
 
     def eventFilter(self, object, event):
 
