@@ -27,6 +27,9 @@ class ColorBlock:
     def printFields(self):
         print(self.color, self.startTime, self.endTime)
 
+    def printFieldsVerbose(self):
+        print("Color is:", self.color, " | Start time:",  self.startTime, " | End time:", self.endTime)
+
     def is_empty(self):
         if self.startTime == self.endTime:
             return True
@@ -191,10 +194,9 @@ class MyPlot:
 
     """This is the class for the scrollable, zoomable plot"""
 
-    MAX_PNTS = 1000
 
-    def __init__(self, plotItem, colorBlockList, colorMappings, *args, **kwargs):
-
+    def __init__(self, colorBlockList, colorMappings, *args, **kwargs):
+        self.MAX_PNTS = 1000
         self.times = []
         self.vals = []
         # don't need the below as of now...
@@ -206,19 +208,17 @@ class MyPlot:
             for line in powerProfile.readlines():
                 line = line.split(',')
                 self.times.append(line[0])
+                #self.times.append(float(line[0]) * 1000)
                 self.vals.append(line[1])
                 self.methNames.append(line[2])
 
-        # plot the data
-        x = np.array(self.times, dtype='float_')
-        y = np.array(self.vals, dtype='float_')
-        plotItem.plot(x, y, pen='b')
+        # get data for plotting
+        self.x = np.array(self.times, dtype='float_')
+        self.y = np.array(self.vals, dtype='float_')
+        #plotItem.plot(x, y, pen='b')
 
 
     def drawMethodRects(self, startVal):
-        #return True
-        # lolol
-
         colorBlockIdx = self.colorMappings[startVal]
         colorBlock = self.colorBlockList.get(colorBlockIdx)
 
@@ -230,9 +230,6 @@ class MyPlot:
         self.axes.axvspan(startPos, endPos, ymin=0, ymax=0.05, \
                           facecolor=colorBlock.color, alpha=0.5)
 
-        #return True
-        # lolol
-        
         maxPos = startPos + self.MAX_PNTS
         while endPos < maxPos:
             colorBlockIdx += 1
@@ -272,6 +269,8 @@ class ApplicationWindow(QtGui.QWidget):
                 self.colorBlockList.add(colorBlock)
                 i = (i+1) % mod 
 
+        self.colorMappings = self.createColorMappings(self.colorBlockList)
+
 
         ### Actual layout work begins ###
         pg.setConfigOption('background', 'w')
@@ -282,14 +281,12 @@ class ApplicationWindow(QtGui.QWidget):
         # resize it
         #self.view.resize(800, 600)
 
-        colorMappings = self.createColorMappings(self.colorBlockList)
-
-        gl.nextRow()
-        buttonVBox = MyMethodButtonPanel(self, self.methodTups, self.colorBlockList, colorMappings)
+        ## Layout the method buttons 
+        #gl.nextRow()
+        buttonVBox = MyMethodButtonPanel(self, self.methodTups, self.colorBlockList, self.colorMappings)
         scrollWidget = QtGui.QWidget()
         scrollWidget.setLayout(buttonVBox)
 
-        ## testing the eventFilter... and it works!
         self.buttonHash = buttonVBox.buttonHash
         for b in buttonVBox.buttonList:
             b.installEventFilter(self)
@@ -301,15 +298,57 @@ class ApplicationWindow(QtGui.QWidget):
         scrollArea.setSizePolicy(QtGui.QSizePolicy.Fixed, QtGui.QSizePolicy.Expanding)
         scrollArea.setWidget(scrollWidget)
 
-        proxyWdg = QtGui.QGraphicsProxyWidget()
-        proxyWdg.setWidget(scrollArea)
-        gl.addItem(proxyWdg)
+        proxyScrollWidget = QtGui.QGraphicsProxyWidget()
+        proxyScrollWidget.setWidget(scrollArea)
+        gl.addItem(proxyScrollWidget)
 
-        self.p1 = gl.addPlot()
-        self.p1.setMouseEnabled(y=False)
-        self.p1.setXRange(.01, 0.04)
-        myGraph = MyPlot(self.p1, self.colorBlockList, colorMappings)
+        ## Layout the actual plot
+        plotGl = gl.addLayout()
         
+        # start with plot
+        myPlot = MyPlot(self.colorBlockList, self.colorMappings)
+        maxVal = float(myPlot.vals[-1])
+
+        #self.mainPlot = plotGl.addPlot(name='MainPlot', title='MainPlot')
+        self.mainPlot = pg.PlotWidget(name='MainPlot', title='MainPlot')
+        self.mainPlot.setMouseEnabled(y=False)
+        self.mainPlot.setXRange(0.00, 0.05)
+        self.mainPlot.plot(myPlot.x, myPlot.y, pen='b')
+        #self.mainPlot.setLimits(xMin=0, xMax=maxVal/5000)
+        self.mainPlot.setLimits(xMin=0)
+
+        proxyMainWidget = QtGui.QGraphicsProxyWidget()
+        proxyMainWidget.setWidget(self.mainPlot)
+        plotGl.addItem(proxyMainWidget)
+
+
+        ## now do method rectangles
+        plotGl.nextRow()
+
+        #colorRectPlot = plotGl.addPlot(name='ColorRectPlot', title='ColorRectPlot')
+        colorRectPlot = pg.PlotWidget(name='ColorRectPlot', title='ColorRectPlot')
+        #colorRectPlot.hideAxis('left')
+        #colorRectPlot.hideAxis('bottom')
+        colorRectPlot.hideButtons()
+        
+        colorRectPen = pg.mkPen('y', width=500)
+        newY = [2000] * len(myPlot.y)
+        newY = np.array(newY, dtype='float_')
+        colorRectPlot.plot(myPlot.x, newY, pen=colorRectPen)
+        #colorRectPlot.plot(myPlot.x, myPlot.y, pen='r')
+
+        colorRectPlot.setMouseEnabled(x=False, y=False)
+        colorRectPlot.setXRange(0.00, 0.05)
+        colorRectPlot.setXLink(self.mainPlot)
+        #colorRectPlot.setLimits(xMin=0, xMax=maxVal/5000) # argh the conversions!!!
+        colorRectPlot.setLimits(xMin=0)
+
+        self.drawMethodRects(0, colorRectPlot, len(myPlot.vals), myPlot.MAX_PNTS)
+
+        proxyRectWidget = QtGui.QGraphicsProxyWidget()
+        proxyRectWidget.setWidget(colorRectPlot)
+        proxyRectWidget.setMaximumHeight(100)
+        plotGl.addItem(proxyRectWidget)
 
     def createColorMappings(self, colorBlockList):
 
@@ -332,6 +371,50 @@ class ApplicationWindow(QtGui.QWidget):
 
         return colorMappings
 
+    def drawMethodRects(self, startVal, plotItem, valLen, maxPnts):
+        print("Entering drawMethodRects!!!")
+
+        #scale = 0.2
+        #scale = 5
+        scale = 0.001
+
+        colorBlockIdx = self.colorMappings[startVal]
+        colorBlock = self.colorBlockList.get(colorBlockIdx)
+
+        colorBlock.printFieldsVerbose()
+        
+        # times are in msec, so divide by 1000 to get seconds
+        startPos = int(colorBlock.startTime * scale)
+        endPos = int(min(colorBlock.endTime * scale, valLen))
+        print("HERE WE BE", startPos, endPos)
+        #self.axes.axvspan(startPos, endPos, ymin=0, ymax=0.05, \
+        #                  facecolor=colorBlock.color, alpha=0.5)
+        xVals = np.array(range(startPos,endPos), dtype='float_')
+        yVals = np.array([2000]*len(xVals), dtype='float_')
+        colorPen = pg.mkPen(colorBlock.color[0], width=100)
+        plotItem.plot(xVals, yVals, pen=colorPen)
+
+        maxPos = startPos + maxPnts
+        while endPos < maxPos:
+            colorBlockIdx += 1
+            colorBlock = self.colorBlockList.get(colorBlockIdx)
+            colorBlock.printFieldsVerbose()
+            colorPen = pg.mkPen(colorBlock.color[0], width=100)
+            startPos = int(colorBlock.startTime * scale)
+            endPos = int(min(colorBlock.endTime * scale, valLen))
+
+            xVals = np.array(range(startPos,endPos), dtype='float_')
+            yVals = np.array([2000]*len(xVals), dtype='float_')
+            colorPen = pg.mkPen(colorBlock.color[0], width=100)
+            plotItem.plot(xVals, yVals, pen=colorPen)
+
+            #print(endPos, "!!!")
+            #self.axes.axvspan(colorBlock.startTime * scale, endPos, ymin=0, ymax=0.05, \
+            #                  facecolor=colorBlock.color, alpha=0.5)
+
+        print("Exiting drawMethodRects!!!")
+ 
+
     def eventFilter(self, object, event):
 
         if event.type() == QtCore.QEvent.MouseButtonPress:
@@ -340,7 +423,7 @@ class ApplicationWindow(QtGui.QWidget):
             #position = startTime * 5 # time is recorded in fifths of a millisecond
             #self.slider.setValue(position)
             position = startTime / 1000
-            self.p1.setXRange(position, position + 0.25)
+            self.mainPlot.setXRange(position, position + 0.25)
             
 
             return True
