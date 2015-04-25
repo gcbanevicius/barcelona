@@ -144,7 +144,8 @@ class MyMethodButtonPanel(QtGui.QVBoxLayout):
             if hashVal not in self.buttonHash:
                 # NB!!! Fix these hash vals!!!
                 randval = random.randrange(1000, 5000)
-                endTime = methodTup[1] + random.randrange(100,500)
+                #endTime = methodTup[1] + random.randrange(100,500)
+                endTime = methodTup[2]
                 methodInfo = MethodInfo(methodTup[0], methodTup[1], endTime, randval)
                 self.buttonHash[hashVal] = methodInfo
             else:
@@ -156,9 +157,11 @@ class MyMethodButtonPanel(QtGui.QVBoxLayout):
             self.buttonList.append(button)
 
             # an ugly check... since we're using fake data in development
+            # there are 5 mappings for every millisec, so we multiply time by 5
             if (methodTup[1] * 5) >= len(colorMappings):
                 break
 
+            # again, 5 mappings per millisec, so multiply
             colorIdx = int(methodTup[1] * 5) # LOVE this stuff...
             colorBlockIdx = colorMappings[colorIdx]
             colorBlock = self.colorBlockList.get(colorBlockIdx)
@@ -207,8 +210,8 @@ class MyPlot:
         with open('powerProfile.csv','r') as powerProfile:
             for line in powerProfile.readlines():
                 line = line.split(',')
-                self.times.append(line[0])
-                #self.times.append(float(line[0]) * 1000)
+                #self.times.append(line[0])
+                self.times.append(float(line[0]) * 1000) # convert to millisec
                 self.vals.append(line[1])
                 self.methNames.append(line[2])
 
@@ -218,6 +221,7 @@ class MyPlot:
         #plotItem.plot(x, y, pen='b')
 
 
+    comm = """
     def drawMethodRects(self, startVal):
         colorBlockIdx = self.colorMappings[startVal]
         colorBlock = self.colorBlockList.get(colorBlockIdx)
@@ -239,6 +243,7 @@ class MyPlot:
             self.axes.axvspan(colorBlock.startTime/1000.0, endPos, ymin=0, ymax=0.05, \
                               facecolor=colorBlock.color, alpha=0.5)
        
+       """
 
 
 class ApplicationWindow(QtGui.QWidget):
@@ -262,7 +267,7 @@ class ApplicationWindow(QtGui.QWidget):
         mod = len(colors)
         i = 0
         for methodTup in self.methodTups:
-            print(methodTup)
+            #print(methodTup)
             colorBlock = ColorBlock(colors[i], methodTup[1], methodTup[2])
             if not colorBlock.is_empty():
                 colorBlock.printFields()
@@ -312,10 +317,12 @@ class ApplicationWindow(QtGui.QWidget):
         #self.mainPlot = plotGl.addPlot(name='MainPlot', title='MainPlot')
         self.mainPlot = pg.PlotWidget(name='MainPlot', title='MainPlot')
         self.mainPlot.setMouseEnabled(y=False)
-        self.mainPlot.setXRange(0.00, 0.05)
+        #self.mainPlot.setXRange(0.00, 0.05)
+        self.mainPlot.setXRange(0, 50)
         self.mainPlot.plot(myPlot.x, myPlot.y, pen='b')
         #self.mainPlot.setLimits(xMin=0, xMax=maxVal/5000)
-        self.mainPlot.setLimits(xMin=0)
+        self.mainPlot.setLimits(xMin=0, xMax=maxVal)
+        #self.mainPlot.setLimits(xMin=0)
 
         proxyMainWidget = QtGui.QGraphicsProxyWidget()
         proxyMainWidget.setWidget(self.mainPlot)
@@ -331,17 +338,21 @@ class ApplicationWindow(QtGui.QWidget):
         #colorRectPlot.hideAxis('bottom')
         colorRectPlot.hideButtons()
         
+        comm = """ THIS WAS JUST A TEST!
         colorRectPen = pg.mkPen('y', width=500)
         newY = [2000] * len(myPlot.y)
         newY = np.array(newY, dtype='float_')
         colorRectPlot.plot(myPlot.x, newY, pen=colorRectPen)
         #colorRectPlot.plot(myPlot.x, myPlot.y, pen='r')
+        """
 
         colorRectPlot.setMouseEnabled(x=False, y=False)
-        colorRectPlot.setXRange(0.00, 0.05)
+        #colorRectPlot.setXRange(0.00, 0.05)
+        colorRectPlot.setXRange(0, 50)
         colorRectPlot.setXLink(self.mainPlot)
         #colorRectPlot.setLimits(xMin=0, xMax=maxVal/5000) # argh the conversions!!!
-        colorRectPlot.setLimits(xMin=0)
+        colorRectPlot.setLimits(xMin=0, xMax=maxVal)
+        #colorRectPlot.setLimits(xMin=0)
 
         self.drawMethodRects(0, colorRectPlot, len(myPlot.vals), myPlot.MAX_PNTS)
 
@@ -357,10 +368,11 @@ class ApplicationWindow(QtGui.QWidget):
         colorBlockIdx = 0
         colorBlock = colorBlockList.get(colorBlockIdx)
         colorBlockEndTime = colorBlock.endTime
+
         with open('powerProfile.csv','r') as powerProfile:
             for line in powerProfile.readlines():
                 line = line.split(',')
-                time = float(line[0])*1000 # convert to msec
+                time = float(line[0])*1000 # convert to millisec
                 if time < colorBlockEndTime:
                     colorMappings.append(colorBlockIdx)
                 else:
@@ -374,43 +386,40 @@ class ApplicationWindow(QtGui.QWidget):
     def drawMethodRects(self, startVal, plotItem, valLen, maxPnts):
         print("Entering drawMethodRects!!!")
 
-        #scale = 0.2
-        #scale = 5
-        scale = 0.001
+        scale = 1
 
         colorBlockIdx = self.colorMappings[startVal]
         colorBlock = self.colorBlockList.get(colorBlockIdx)
-
         colorBlock.printFieldsVerbose()
-        
-        # times are in msec, so divide by 1000 to get seconds
         startPos = int(colorBlock.startTime * scale)
         endPos = int(min(colorBlock.endTime * scale, valLen))
-        print("HERE WE BE", startPos, endPos)
-        #self.axes.axvspan(startPos, endPos, ymin=0, ymax=0.05, \
-        #                  facecolor=colorBlock.color, alpha=0.5)
-        xVals = np.array(range(startPos,endPos), dtype='float_')
-        yVals = np.array([2000]*len(xVals), dtype='float_')
-        colorPen = pg.mkPen(colorBlock.color[0], width=100)
+        xVals = np.array(range(startPos,endPos+1)) #, dtype='float_')
+        yVals = np.array([2000]*len(xVals)) #, dtype='float_')
+
+        print("Start and End:", startPos, endPos)
+        print(len(xVals))
+        if len(xVals) < 10: print(xVals)
+
+        colorPen = pg.mkPen(colorBlock.color[0], width=10)
         plotItem.plot(xVals, yVals, pen=colorPen)
 
-        maxPos = startPos + maxPnts
-        while endPos < maxPos:
+        while endPos < valLen:
+            #break # trolol
             colorBlockIdx += 1
             colorBlock = self.colorBlockList.get(colorBlockIdx)
             colorBlock.printFieldsVerbose()
             colorPen = pg.mkPen(colorBlock.color[0], width=100)
             startPos = int(colorBlock.startTime * scale)
             endPos = int(min(colorBlock.endTime * scale, valLen))
+            xVals = np.array(range(startPos,endPos+1)) #, dtype='float_')
+            yVals = np.array([2000]*len(xVals)) #, dtype='float_')
+            
+            print("Start and End:", startPos, endPos)
+            print(len(xVals))
+            if len(xVals) < 10: print(xVals)
 
-            xVals = np.array(range(startPos,endPos), dtype='float_')
-            yVals = np.array([2000]*len(xVals), dtype='float_')
-            colorPen = pg.mkPen(colorBlock.color[0], width=100)
+            colorPen = pg.mkPen(colorBlock.color[0], width=10)
             plotItem.plot(xVals, yVals, pen=colorPen)
-
-            #print(endPos, "!!!")
-            #self.axes.axvspan(colorBlock.startTime * scale, endPos, ymin=0, ymax=0.05, \
-            #                  facecolor=colorBlock.color, alpha=0.5)
 
         print("Exiting drawMethodRects!!!")
  
@@ -419,12 +428,10 @@ class ApplicationWindow(QtGui.QWidget):
 
         if event.type() == QtCore.QEvent.MouseButtonPress:
             hashVal = hash(object) # the object is the button
-            startTime = self.buttonHash[hashVal].startTime #[0]
-            #position = startTime * 5 # time is recorded in fifths of a millisecond
-            #self.slider.setValue(position)
-            position = startTime / 1000
-            self.mainPlot.setXRange(position, position + 0.25)
-            
+            startTime = self.buttonHash[hashVal].startTime
+            ### HAHA WE CAN GET RID OF IT SINCE WE'RE JUST IN MILLISEC!!!  
+            position = startTime# / 1000
+            self.mainPlot.setXRange(position, position+50)
 
             return True
 
