@@ -84,11 +84,23 @@ class MethodInfo:
 
     """Wraps relevant info about a method"""
 
-    def __init__(self, methodName, startTime, endTime, avgPower):
+    def __init__(self, methodName, startTime, endTime, depth, avgPower):
         self.methodName = methodName
         self.startTime = startTime
         self.endTime = endTime
         self.avgPower = avgPower
+        self.depth = depth
+        self.childrenList = []
+
+    def addChild(self, child):
+        self.childrenList.append(child)
+
+    def printHelperCallgraph(self):
+        myString = self.methodName + ": "
+        for child in self.childrenList:
+            myString += child.methodName + ", "
+        print(myString)
+
 
 class MyMethodButton(QtGui.QHBoxLayout):
 
@@ -133,8 +145,10 @@ class MyMethodButtonPanel(QtGui.QVBoxLayout):
     def addMethodNames(self, colorMappings):
 
         # get callstack and add buttons
-        prevDepth = -1
-        prevParentList = []
+        currDepth = 0
+        currParent = None
+        prevMethod = None
+        parentList = []
         for methodTup in self.methodTups:
             container = QtGui.QHBoxLayout()
             button = QtGui.QPushButton(methodTup[0])
@@ -153,7 +167,28 @@ class MyMethodButtonPanel(QtGui.QVBoxLayout):
                 randval = random.randrange(1000, 5000)
                 #endTime = methodTup[1] + random.randrange(100,500)
                 endTime = methodTup[2]
-                methodInfo = MethodInfo(methodTup[0], methodTup[1], endTime, randval)
+                depth = methodTup[3]
+                
+                methodInfo = MethodInfo(methodTup[0], methodTup[1], endTime, depth, randval)
+
+                # time for fun stuff with hierarchy!... there are 3 cases
+                if depth < currDepth:
+                    print("Going up,", methodTup[0], " has depth:", depth)
+                    currParent = parentList.pop() # there must be something on stack in this case
+                    if currParent:
+                        currParent.addChild(methodInfo)
+                elif depth == currDepth:
+                    if currParent:
+                        currParent.addChild(methodInfo)
+                elif depth > currDepth:
+                    print("Going down,", methodTup[0], " has depth:", depth)
+                    parentList.append(currParent)
+                    currParent = prevMethod
+                    currParent.addChild(methodInfo)
+                # always do these two
+                currDepth = depth
+                prevMethod = methodInfo
+                
                 self.buttonHash[hashVal] = methodInfo
             else:
                 print("Argh... button was already in HashTable!", sys.stderr)
@@ -198,6 +233,12 @@ class MyMethodButtonPanel(QtGui.QVBoxLayout):
 
             containerButton = MyMethodButton(indentLabel, colorLabel, button)
             self.addLayout(containerButton)
+
+    def buttonIterate(self):
+        for button in self.buttonList:
+            hashVal = hash(button)
+            methodInfo = self.buttonHash[hashVal]
+            methodInfo.printHelperCallgraph()
 
 
 class MyPlot:
@@ -265,6 +306,7 @@ class ApplicationWindow(QtGui.QWidget):
         ## Layout the method buttons 
         #gl.nextRow()
         buttonVBox = MyMethodButtonPanel(self, self.methodTups, self.colorBlockList, self.colorMappings)
+        buttonVBox.buttonIterate()
         scrollWidget = QtGui.QWidget()
         scrollWidget.setLayout(buttonVBox)
 
@@ -293,8 +335,7 @@ class ApplicationWindow(QtGui.QWidget):
         #self.mainPlot = plotGl.addPlot(name='MainPlot', title='MainPlot')
         self.mainPlot = pg.PlotWidget(name='MainPlot', title='MainPlot')
         self.mainPlot.setMouseEnabled(y=False)
-        #self.mainPlot.setXRange(0.00, 0.05)
-        self.mainPlot.setXRange(0, 50)
+        self.mainPlot.setXRange(0, 250)
         self.mainPlot.plot(myPlot.x, myPlot.y, pen='b')
         #self.mainPlot.setLimits(xMin=0, xMax=maxVal/5000)
         self.mainPlot.setLimits(xMin=0, xMax=maxVal)
@@ -316,15 +357,14 @@ class ApplicationWindow(QtGui.QWidget):
         colorRectPlot.hideButtons()
         
         colorRectPlot.setMouseEnabled(x=False, y=False)
-        #colorRectPlot.setXRange(0.00, 0.05)
-        colorRectPlot.setXRange(0, 50)
+        colorRectPlot.setXRange(0, 250)
         colorRectPlot.setXLink(self.mainPlot)
         #colorRectPlot.setLimits(xMin=0, xMax=maxVal/5000) # argh the conversions!!!
         colorRectPlot.setLimits(xMin=0, xMax=maxVal, yMin=0, yMax=50)
         #colorRectPlot.setLimits(xMin=0)
 
         print("yoyo1")
-        self.drawMethodRects(0, colorRectPlot, len(myPlot.vals), myPlot.MAX_PNTS)
+        #self.drawMethodRects(0, colorRectPlot, len(myPlot.vals), myPlot.MAX_PNTS)
         print("yoyo2")
 
         proxyRectWidget = QtGui.QGraphicsProxyWidget()
@@ -396,32 +436,28 @@ class ApplicationWindow(QtGui.QWidget):
  
     def eventFilter(self, object, event):
 
+        # left click jumps to x-value, right-click displays popup
         if event.type() == QtCore.QEvent.MouseButtonPress:
-            hashVal = hash(object) # the object is the button
-            startTime = self.buttonHash[hashVal].startTime
-            ### HAHA WE CAN GET RID OF IT SINCE WE'RE JUST IN MILLISEC!!!  
-            position = startTime# / 1000
-            self.mainPlot.setXRange(position, position+50)
-
-            return True
-
-        if event.type() == QtCore.QEvent.MouseButtonDblClick:
-            hashVal = hash(object) # the object is the button
-            methodInfo = self.buttonHash[hashVal]
-            startTime = methodInfo.startTime
-            endTime = methodInfo.endTime
-            avgPower = methodInfo.avgPower
-            self.popup = MyPopup(startTime, endTime, avgPower)
-            ### oooo baby, it's all here!
-            cursor = QtGui.QCursor()
-            x = cursor.pos().x()
-            y = cursor.pos().y()
-            self.popup.setGeometry(QtCore.QRect(x, y+50, 400, 200))
-            self.popup.show()
-
-            # for now, double click will also display children
-
-            return True
+            if event.button() == QtCore.Qt.LeftButton:
+                hashVal = hash(object) # the object is the button
+                startTime = self.buttonHash[hashVal].startTime
+                position = startTime
+                self.mainPlot.setXRange(position, position+250)
+                return True
+            if event.button() == QtCore.Qt.RightButton:
+                hashVal = hash(object) # the object is the button
+                methodInfo = self.buttonHash[hashVal]
+                startTime = methodInfo.startTime
+                endTime = methodInfo.endTime
+                avgPower = methodInfo.avgPower
+                self.popup = MyPopup(startTime, endTime, avgPower)
+                ### oooo baby, it's all here!
+                cursor = QtGui.QCursor()
+                x = cursor.pos().x()
+                y = cursor.pos().y()
+                self.popup.setGeometry(QtCore.QRect(x, y+50, 400, 200))
+                self.popup.show()
+                return True
 
         return False
 
