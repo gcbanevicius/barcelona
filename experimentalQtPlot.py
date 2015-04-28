@@ -23,6 +23,13 @@ class ColorBlock:
         self.color = color
         self.startTime = startTime
         self.endTime = endTime
+        print(self.startTime, self.endTime)
+        
+        if self.endTime != float('inf'):
+            self.xVals = np.array(range(int(self.startTime),int(self.endTime)+1))
+        else:
+            self.xVals = np.array(range(int(self.startTime), int(self.startTime)+100))
+        self.yVals = np.array([25]*len(self.xVals))
 
     def printFields(self):
         print(self.color, self.startTime, self.endTime)
@@ -202,10 +209,6 @@ class MyPlot:
         self.MAX_PNTS = 1000
         self.times = []
         self.vals = []
-        # don't need the below as of now...
-        self.methNames =[]
-        self.colorBlockList = colorBlockList
-        self.colorMappings = colorMappings
 
         with open('powerProfile.csv','r') as powerProfile:
             for line in powerProfile.readlines():
@@ -213,37 +216,10 @@ class MyPlot:
                 #self.times.append(line[0])
                 self.times.append(float(line[0]) * 1000) # convert to millisec
                 self.vals.append(line[1])
-                self.methNames.append(line[2])
 
         # get data for plotting
         self.x = np.array(self.times, dtype='float_')
         self.y = np.array(self.vals, dtype='float_')
-        #plotItem.plot(x, y, pen='b')
-
-
-    comm = """
-    def drawMethodRects(self, startVal):
-        colorBlockIdx = self.colorMappings[startVal]
-        colorBlock = self.colorBlockList.get(colorBlockIdx)
-
-        colorBlock.printFields()
-        
-        # times are in msec, so divide by 1000 to get seconds
-        startPos = colorBlock.startTime/1000
-        endPos = min(colorBlock.endTime/1000, len(self.vals))
-        self.axes.axvspan(startPos, endPos, ymin=0, ymax=0.05, \
-                          facecolor=colorBlock.color, alpha=0.5)
-
-        maxPos = startPos + self.MAX_PNTS
-        while endPos < maxPos:
-            colorBlockIdx += 1
-            colorBlock = self.colorBlockList.get(colorBlockIdx)
-            endPos = min(colorBlock.endTime/1000, len(self.vals))
-            #print(endPos, "!!!")
-            self.axes.axvspan(colorBlock.startTime/1000.0, endPos, ymin=0, ymax=0.05, \
-                              facecolor=colorBlock.color, alpha=0.5)
-       
-       """
 
 
 class ApplicationWindow(QtGui.QWidget):
@@ -270,7 +246,7 @@ class ApplicationWindow(QtGui.QWidget):
             #print(methodTup)
             colorBlock = ColorBlock(colors[i], methodTup[1], methodTup[2])
             if not colorBlock.is_empty():
-                colorBlock.printFields()
+                #colorBlock.printFields()
                 self.colorBlockList.add(colorBlock)
                 i = (i+1) % mod 
 
@@ -298,7 +274,7 @@ class ApplicationWindow(QtGui.QWidget):
 
         scrollArea = QtGui.QScrollArea()
         scrollArea.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOn)
-        scrollArea.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        scrollArea.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOn)
         scrollArea.setWidgetResizable(False)
         scrollArea.setSizePolicy(QtGui.QSizePolicy.Fixed, QtGui.QSizePolicy.Expanding)
         scrollArea.setWidget(scrollWidget)
@@ -312,7 +288,7 @@ class ApplicationWindow(QtGui.QWidget):
         
         # start with plot
         myPlot = MyPlot(self.colorBlockList, self.colorMappings)
-        maxVal = float(myPlot.vals[-1])
+        maxVal = float(myPlot.times[-1])
 
         #self.mainPlot = plotGl.addPlot(name='MainPlot', title='MainPlot')
         self.mainPlot = pg.PlotWidget(name='MainPlot', title='MainPlot')
@@ -323,6 +299,7 @@ class ApplicationWindow(QtGui.QWidget):
         #self.mainPlot.setLimits(xMin=0, xMax=maxVal/5000)
         self.mainPlot.setLimits(xMin=0, xMax=maxVal)
         #self.mainPlot.setLimits(xMin=0)
+        print(maxVal)
 
         proxyMainWidget = QtGui.QGraphicsProxyWidget()
         proxyMainWidget.setWidget(self.mainPlot)
@@ -338,23 +315,17 @@ class ApplicationWindow(QtGui.QWidget):
         #colorRectPlot.hideAxis('bottom')
         colorRectPlot.hideButtons()
         
-        comm = """ THIS WAS JUST A TEST!
-        colorRectPen = pg.mkPen('y', width=500)
-        newY = [2000] * len(myPlot.y)
-        newY = np.array(newY, dtype='float_')
-        colorRectPlot.plot(myPlot.x, newY, pen=colorRectPen)
-        #colorRectPlot.plot(myPlot.x, myPlot.y, pen='r')
-        """
-
         colorRectPlot.setMouseEnabled(x=False, y=False)
         #colorRectPlot.setXRange(0.00, 0.05)
         colorRectPlot.setXRange(0, 50)
         colorRectPlot.setXLink(self.mainPlot)
         #colorRectPlot.setLimits(xMin=0, xMax=maxVal/5000) # argh the conversions!!!
-        colorRectPlot.setLimits(xMin=0, xMax=maxVal)
+        colorRectPlot.setLimits(xMin=0, xMax=maxVal, yMin=0, yMax=50)
         #colorRectPlot.setLimits(xMin=0)
 
+        print("yoyo1")
         self.drawMethodRects(0, colorRectPlot, len(myPlot.vals), myPlot.MAX_PNTS)
+        print("yoyo2")
 
         proxyRectWidget = QtGui.QGraphicsProxyWidget()
         proxyRectWidget.setWidget(colorRectPlot)
@@ -384,46 +355,45 @@ class ApplicationWindow(QtGui.QWidget):
         return colorMappings
 
     def drawMethodRects(self, startVal, plotItem, valLen, maxPnts):
-        print("Entering drawMethodRects!!!")
-
         scale = 1
 
         colorBlockIdx = self.colorMappings[startVal]
+        print(colorBlockIdx, self.colorBlockList.length())
         colorBlock = self.colorBlockList.get(colorBlockIdx)
-        colorBlock.printFieldsVerbose()
+        #colorBlock.printFieldsVerbose()
+
+        comm = """
         startPos = int(colorBlock.startTime * scale)
         endPos = int(min(colorBlock.endTime * scale, valLen))
         xVals = np.array(range(startPos,endPos+1)) #, dtype='float_')
         yVals = np.array([2000]*len(xVals)) #, dtype='float_')
-
-        print("Start and End:", startPos, endPos)
-        print(len(xVals))
-        if len(xVals) < 10: print(xVals)
+        """
+        endPos = int(min(colorBlock.endTime, valLen))
 
         colorPen = pg.mkPen(colorBlock.color[0], width=10)
-        plotItem.plot(xVals, yVals, pen=colorPen)
+        #plotItem.plot(xVals, yVals, pen=colorPen)
+        plotItem.plot(colorBlock.xVals, colorBlock.yVals, pen=colorPen)
 
         while endPos < valLen:
             #break # trolol
             colorBlockIdx += 1
+            print(colorBlockIdx, self.colorBlockList.length())
             colorBlock = self.colorBlockList.get(colorBlockIdx)
-            colorBlock.printFieldsVerbose()
+            #colorBlock.printFieldsVerbose()
             colorPen = pg.mkPen(colorBlock.color[0], width=100)
+
+            comm = """
             startPos = int(colorBlock.startTime * scale)
             endPos = int(min(colorBlock.endTime * scale, valLen))
             xVals = np.array(range(startPos,endPos+1)) #, dtype='float_')
             yVals = np.array([2000]*len(xVals)) #, dtype='float_')
+            """
+            endPos = int(min(colorBlock.endTime, valLen))
             
-            print("Start and End:", startPos, endPos)
-            print(len(xVals))
-            if len(xVals) < 10: print(xVals)
-
             colorPen = pg.mkPen(colorBlock.color[0], width=10)
-            plotItem.plot(xVals, yVals, pen=colorPen)
-
-        print("Exiting drawMethodRects!!!")
+            #plotItem.plot(xVals, yVals, pen=colorPen)
+            plotItem.plot(colorBlock.xVals, colorBlock.yVals, pen=colorPen)
  
-
     def eventFilter(self, object, event):
 
         if event.type() == QtCore.QEvent.MouseButtonPress:
