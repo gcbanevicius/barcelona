@@ -2,127 +2,115 @@
 
 from __future__ import print_function
 
-import sys
 import re
+import sys
 
 def adjustTime(time, startTime):
     time = time - startTime
     return time
 
-
 def print_helper(direction, depth, tup):
     tab = "  "
-    print(tab*depth + direction + " " + str(tup))
+    #print(tab*depth + direction + " " + str(tup))
+    print(tab*depth + str(tup))
 
-
-def parseAbsoluteTimes(tuples):
+def parseAbsoluteTimes(tuples, startTime=0, plotSpan=5000.0):
    
-    #DO_PRINT = False
-    DO_PRINT = True
+    DO_PRINT = False
+    #DO_PRINT = True
 
-    callStack = []
+    endTime = startTime+float(plotSpan)
+
+    callStack = ["---"]
     methodTups = []
     lenTuples = len(tuples)
     # based on the assumption we start with an enter, which is reasonable...
-    depth = -1 # here we go, baby...
+    depth = -1
     for i in range(0, lenTuples):
+        if tuples[i][2] > endTime:
+            break
+
         currDirection = tuples[i][0]
 
         # if we are entering the function...
         if currDirection == "Enter":
 
             depth += 1
-
             currName = tuples[i][1]
             callStack.append(currName) 
 
             # check if last entry in log
             if i == (lenTuples - 1):
-                methodTup = (currName, float(currTime), float("+inf"), depth, currDirection)
+                #methodTup = (currName, float(currTime), float("+inf"), depth, currDirection)
+                methodTup = (currName, float(currTime), float(endTime), depth, currDirection)
                 methodTups.append(methodTup)
                 if DO_PRINT: print_helper("Entr", depth, methodTup)
                 continue
             else:
                 currTime = tuples[i][2]
-                nextTime = tuples[i+1][2] 
+                if tuples[i+1][2] > endTime:
+                    nextTime = endTime
+                else:
+                    nextTime = tuples[i+1][2] 
                 methodTup = (currName, float(currTime), float(nextTime), depth, currDirection)
                 methodTups.append(methodTup)
                 if DO_PRINT: print_helper("Entr", depth, methodTup)
 
         # if we are exiting the function...
         elif currDirection == "Exit":
- 
-            currName = callStack.pop()
-
-            #if len(callStack) == 0:
-            #    currName = "---"
-            #else:                
-            #    currName = callStack[-1]
-
-            if  i == (lenTuples - 1):
-                methodTup = (currName, float(currTime), float("+inf"), depth, currDirection)
+            if len(callStack) == 1:
+                currName = callStack[-1]
+                currTime = tuples[i][2]
+                if  i == (lenTuples - 1):
+                    nextTime = endTime
+                elif tuples[i+1][2] > endTime:
+                    nextTime = endTime
+                else:
+                    nextTime = tuples[i+1][2] 
+                methodTup = (currName, float(currTime), float(nextTime), 0, "Enter") #currDirection)
                 methodTups.append(methodTup)
                 if DO_PRINT: print_helper("Exit", depth, methodTup)
                 continue
-            else:
-                currTime = tuples[i][2]
-                nextTime = tuples[i+1][2] 
-                methodTup = (currName, float(currTime), float(nextTime), depth, currDirection)
+
+            currName = callStack.pop()
+            currName = callStack[-1]
+
+            if  i == (lenTuples - 1):
+                #methodTup = (currName, float(currTime), float("+inf"), depth, currDirection)
+                methodTup = (currName, float(currTime), float(endTime), depth, currDirection)
                 methodTups.append(methodTup)
                 if DO_PRINT: print_helper("Exit", depth, methodTup)
+                continue
+
+            #else:
+            currTime = tuples[i][2]
+            if tuples[i+1][2] > endTime:
+                nextTime = endTime
+            else:
+                nextTime = tuples[i+1][2] 
+
+            if currTime == nextTime:
+                depth -= 1
+                continue
+
+            methodTup = (currName, float(currTime), float(nextTime), depth, currDirection)
+            methodTups.append(methodTup)
+            if DO_PRINT: print_helper("Exit", depth, methodTup)
 
             depth -= 1
 
-
     return methodTups
 
-           
-def parseRelativeTimes(tuples):
+def parseInputFile(inputFileName, startTime=0, plotSpan=5000):
 
-    callStack = []
-    lenTuples = len(tuples)
-    for i in range(0, lenTuples):
-        currDirection = tuples[i][0]
+    endTime = startTime+plotSpan
 
-        # if we are entering the function...
-        if currDirection == "Enter":
-            currName = tuples[i][1]
-            callStack.append(currName) 
-
-            # check if last entry in log
-            if i == (lenTuples - 1):
-                print("%s for ---" % (currName))
-                continue
-            else:
-                currTime = tuples[i][2]
-                nextTime = tuples[i+1][2] 
-                print("%s for %d" % (currName, nextTime-currTime))
- 
-
-        # if we are exiting the function...
-        elif currDirection == "Exit":
-            callStack.pop()
-
-            if len(callStack) == 0:
-                currName = "---"
-            else:                
-                currName = callStack[-1]
-
-            if  i == (lenTuples - 1):
-                print("%s for ---" % (currName))
-                continue
-            else:
-                currTime = tuples[i][2]
-                nextTime = tuples[i+1][2] 
-                print("%s for %d" % (currName, nextTime-currTime))
-            
-
-def parseInputFile(inputFileName):
-
-    startTime = -1L
-    tuples = []
+    clockStartTime = -1L
+    finalLineTups = []
     with open(inputFileName, "r") as inputFile:
-        for line in inputFile.readlines():
+        lines = inputFile.readlines()
+        lineTups = []
+        for line in lines:
             line = line.strip()
             match = re.search('(Enter|Exit)\s+(\S+).*?(\d+$)', line)
 
@@ -130,16 +118,51 @@ def parseInputFile(inputFileName):
             name = match.group(2)
             time = long(match.group(3))
 
-            if startTime < 0:
-                startTime = time
+            if clockStartTime < 0:
+                clockStartTime = time
 
-            time = adjustTime(time, startTime)
- 
+            time = adjustTime(time, clockStartTime)
+
             logTuple = (direction, name, time)
-            tuples.append(logTuple)
+            lineTups.append(logTuple)    
 
-    return tuples   
+        for i in range(0, len(lineTups)):
+            thisTup = lineTups[i]
 
+            if i == len(lineTups)-1:
+                if thisTup[2] < startTime:
+                    time = startTime
+                else:
+                    time = thisTup[2]
+                
+                if time >= endTime:
+                    break
+
+                direction = thisTup[0]
+                name = thisTup[1]
+                logTuple = (direction, name, time)
+                finalLineTups.append(logTuple)
+
+
+            else:
+                nextTup = lineTups[i+1]
+
+                if thisTup[2] < startTime and nextTup[2] <= startTime:
+                    continue
+                elif thisTup[2] < startTime and nextTup[2] > startTime:
+                    time = startTime
+                else:
+                    time = thisTup[2]
+                
+                if time >= endTime:
+                    break 
+ 
+                direction = thisTup[0]
+                name = thisTup[1]
+                logTuple = (direction, name, time)
+                finalLineTups.append(logTuple)
+
+    return finalLineTups
 
 def main():
 
@@ -153,7 +176,6 @@ def main():
 
     with open(fileName, "r") as loggerFile:
         for line in loggerFile.readlines():
-            #print(line)
             line = line.strip()
             match = re.search('(Enter|Exit)\s+(\S+).*?(\d+$)', line)
 
@@ -168,11 +190,8 @@ def main():
  
             logTuple = (direction, name, time)
             tuples.append(logTuple)
-            #print(logTuple)
 
     return parseAbsoluteTimes(tuples)
-    #parseRelativeTimes(tuples)
-
 
 if __name__ == "__main__":
     main()
