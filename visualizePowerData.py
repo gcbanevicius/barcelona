@@ -6,6 +6,7 @@ import random
 import re
 import sys
 import random
+import time
 
 from PySide import QtGui, QtCore
 import pyqtgraph as pg
@@ -19,11 +20,13 @@ class ColorBlock:
     
     """Class with information about color-coded method rectangles"""
 
-    def __init__(self, color, startTime, endTime):
+    def __init__(self, color, methodName, startTime, endTime, depth):
         self.color = color
+        self.methodName = methodName
         self.startTime = startTime
         self.endTime = endTime
-        print(self.startTime, self.endTime)
+        self.depth = depth
+        #print(self.startTime, self.endTime)
         
         if self.endTime != float('inf'):
             self.xVals = np.array(range(int(self.startTime),int(self.endTime)+1))
@@ -33,6 +36,9 @@ class ColorBlock:
 
     def printFields(self):
         print(self.color, self.startTime, self.endTime)
+
+    def printFieldsCompare(self):
+        print(self.color, self.startTime, self.endTime, self.xVals[0], self.xVals[-1])
 
     def printFieldsVerbose(self):
         print("Color is:", self.color, " | Start time:",  self.startTime, " | End time:", self.endTime)
@@ -69,9 +75,9 @@ class MyPopup(QtGui.QWidget):
         labelStr = """
         Start time (ms): %s\n
         End time (ms): %s\n
-        Average Power (mW): %s\n
         """ \
-        % (str(self.startTime), str(self.endTime), str(self.avgPower))
+        % (str(self.startTime), str(self.endTime)) #, str(self.avgPower))
+        #Average Power (mW): %s\n
         label = QtGui.QLabel(labelStr, self)
         label.show()
 
@@ -138,11 +144,76 @@ class MyMethodButtonPanel(QtGui.QVBoxLayout):
         
         # this is a mapping of method-name-buttons to relevant info
         self.buttonHash = {}
-        print("Before addMethodNames")
-        self.addMethodNames(self.colorMappings)
-        print("After addMethodNames")
+        #print("Before addMethodNames")
+        #self.addMethodNames(self.colorMappings)
+        self.betterAddMethodNames()
+        #print("After addMethodNames")
        
 
+
+    def betterAddMethodNames(self):
+        prevEndTime = -1
+        for i in range(self.colorBlockList.length()):
+            colorBlock = self.colorBlockList.get(i)
+            if colorBlock.startTime < prevEndTime:
+                continue
+
+            if colorBlock.startTime > colorBlock.endTime:
+                print("Color blocks have messed up times!")
+                sys.exit(1)
+
+            container = QtGui.QHBoxLayout()
+            button = QtGui.QPushButton(colorBlock.methodName)
+            button.setFocusPolicy(QtCore.Qt.NoFocus)
+            #button.setFlat(True)
+            button.setStyleSheet("""
+                .QPushButton {
+                    text-align: left;
+                    padding: 5px
+                }
+            """)
+
+            hashVal = hash(button)
+            if hashVal not in self.buttonHash:
+                methodInfo = MethodInfo(colorBlock.methodName, colorBlock.startTime, colorBlock.endTime, colorBlock.depth, 100)
+                self.buttonHash[hashVal] = methodInfo
+
+            else:
+                print("Argh... button was already in HashTable!", sys.stderr)
+                sys.exit(1)
+
+            # add buttons to a list, to be referenced by eventFilter 
+            # in the main ApplicationWindow class
+            self.buttonList.append(button)
+
+            # catch the last log that starts past end of time frame
+            #endTime = methodTup[1] - self.startTime
+            #if endTime >= len(colorMappings):
+            #    print(endTime, len(colorMappings))
+            #    break
+
+            colorName = colorBlock.color
+
+            # set color
+            palette = QtGui.QPalette()
+            palette.setColor(QtGui.QPalette.Background, self.colorHash[colorName])
+            colorLabel = QtGui.QLabel("    ")
+            colorLabel.setFixedSize(25, 25)
+            colorLabel.setAutoFillBackground(True)
+            colorLabel.setPalette(palette)
+
+            # set indentation
+            depth = colorBlock.depth
+            indent = " " * (4 * depth)
+            indentLabel = QtGui.QLabel(" ")
+            indentLabel.setFixedSize(40*depth, 25)
+            
+            # create button
+            containerButton = MyMethodButton(indentLabel, colorLabel, button)
+            self.addLayout(containerButton)
+            prevEndTime = colorBlock.endTime
+
+    comm = '''
     def addMethodNames(self, colorMappings):
 
         # get callstack and add buttons
@@ -240,6 +311,7 @@ class MyMethodButtonPanel(QtGui.QVBoxLayout):
             # create button
             containerButton = MyMethodButton(indentLabel, colorLabel, button)
             self.addLayout(containerButton)
+    '''
 
     def buttonIterate(self):
         for button in self.buttonList:
@@ -288,8 +360,10 @@ class ApplicationWindow(QtGui.QWidget):
             fileName = "Logger.txt"
 
         # get the time range
-        startTime = int(raw_input("Enter start time of the window (in seconds): "))*1000
-        PLOT_SPAN = int(raw_input("Enter the size of the window (in seconds): "))*1000
+        startTime = int(raw_input("Enter start time of the window (in milliseconds): "))
+        PLOT_SPAN = int(raw_input("Enter the size of the window (in milliseconds): "))
+
+        print("START:", time.time())
 
         # popup window for hover on button
         self.popup = None
@@ -312,11 +386,12 @@ class ApplicationWindow(QtGui.QWidget):
                         i = (i+1) % modVal 
                     else:
                         color = 'lightGray'
-                    colorBlock = ColorBlock(color, methodTup[1], methodTup[2])
+                    colorBlock = ColorBlock(color, methodTup[0], methodTup[1], methodTup[2], methodTup[3])
                     self.colorBlockList.add(colorBlock)
 
             # a mapping of each time to a "color block"
-            self.colorMappings = self.createColorMappings(self.colorBlockList, startTime)
+            #self.colorMappings = self.createColorMappings(self.colorBlockList, startTime)
+            self.colorMappings = []
         else:
             self.colorBlockList = ColorBlockList()
             self.colorMappings = []
@@ -386,10 +461,11 @@ class ApplicationWindow(QtGui.QWidget):
             colorRectPlot.setLimits(xMin=startTime, xMax=startTime+PLOT_SPAN, yMin=0, yMax=1)
             colorRectPlot.setLabel('left', text=" ")
 
-            print("Before drawMethodRects")
+            #print("Before drawMethodRects")
             #self.drawMethodRects(0, colorRectPlot, len(myPlot.vals), myPlot.MAX_PNTS)
-            self.drawMethodRects(startTime, colorRectPlot, PLOT_SPAN, myPlot.MAX_PNTS)
-            print("After drawMethodRects")
+            #self.drawMethodRects(startTime, colorRectPlot, PLOT_SPAN, myPlot.MAX_PNTS)
+            self.betterDrawMethodRects(colorRectPlot)
+            #print("After drawMethodRects")
 
             proxyRectWidget = QtGui.QGraphicsProxyWidget()
             proxyRectWidget.setWidget(colorRectPlot)
@@ -408,7 +484,8 @@ class ApplicationWindow(QtGui.QWidget):
         endTime = startTime+PLOT_SPAN
 
         i = -1
-        print("now in createColorMappings", startTime, endTime)
+        #print("now in createColorMappings", startTime, endTime)
+        time = startTime
         with open('powerProfile.csv','r') as powerProfile:
             for line in powerProfile.readlines()[(startTime*5):(endTime*5)+1]:
                 i += 1
@@ -417,32 +494,54 @@ class ApplicationWindow(QtGui.QWidget):
                 #liney = line
                 line = line.split(',')
                 time = float(line[0])*1000.0 # convert to millisec
+                #time = float(i/5) # convert to millisec
                 #print(liney.rstrip(), "|||", line[0], "|||", time)
+                #print("In create color map:", i, time, endTime)
 
-                if time > float(endTime):
+                if time >= float(endTime):
                     break
 
                 if time < colorBlockEndTime:
                     colorMappings.append(colorBlockIdx)
                 else:
                     colorBlockIdx += 1
-                    print("In createColorMappings:", time, colorBlockIdx, colorBlockList.length())
+                    #print("In createColorMappings:", time, colorBlockIdx, colorBlockList.length())
                     colorBlock = colorBlockList.get(colorBlockIdx)
                     colorBlockEndTime = colorBlock.endTime
                     colorMappings.append(colorBlockIdx)
 
-        print("now leaving createColorMappings", len(colorMappings))
+        #print("now leaving createColorMappings", len(colorMappings))
         return colorMappings
 
+    def betterDrawMethodRects(self, plotItem):
+        colorBlock = self.colorBlockList.get(0)
+        #colorBlock.printFieldsCompare()
+        colorPen = pg.mkPen(colorBlock.color[0], width=10)
+        plotItem.plot(colorBlock.xVals, colorBlock.yVals, pen=colorPen)
+        prevEndTime = colorBlock.endTime
+
+        #while endPos < startVal+valLen:
+        for i in range(1,self.colorBlockList.length()):
+            colorBlock = self.colorBlockList.get(i)
+            if colorBlock.startTime < prevEndTime:
+                continue
+            #colorBlock.printFieldsCompare()
+            #print(i, self.colorBlockList.length())
+            colorPen = pg.mkPen(colorBlock.color[0], width=10)
+            plotItem.plot(colorBlock.xVals, colorBlock.yVals, pen=colorPen)
+            prevEndTime = colorBlock.endTime
+ 
+
+    comm = '''
     def drawMethodRects(self, startVal, plotItem, valLen, maxPnts):
         #colorBlockIdx = self.colorMappings[startVal]
         colorBlockIdx = self.colorMappings[0]
         colorBlock = self.colorBlockList.get(colorBlockIdx)
         endPos = int(min(colorBlock.endTime, valLen))
-        print(colorBlockIdx, self.colorBlockList.length())
+        #print(colorBlockIdx, self.colorBlockList.length())
 
         colorPen = pg.mkPen(colorBlock.color[0], width=10)
-        print(colorBlock.printFields())
+        colorBlock.printFields()
         plotItem.plot(colorBlock.xVals, colorBlock.yVals, pen=colorPen)
 
         while endPos < startVal+valLen:
@@ -450,12 +549,13 @@ class ApplicationWindow(QtGui.QWidget):
             colorBlock = self.colorBlockList.get(colorBlockIdx)
             colorPen = pg.mkPen(colorBlock.color[0], width=100)
             endPos = int(min(colorBlock.endTime, startVal+valLen))
-            print(colorBlockIdx, self.colorBlockList.length())
+            #print(colorBlockIdx, self.colorBlockList.length())
             
             colorPen = pg.mkPen(colorBlock.color[0], width=10)
             colorBlock.printFields()
             plotItem.plot(colorBlock.xVals, colorBlock.yVals, pen=colorPen)
- 
+    ''' 
+
     def eventFilter(self, object, event):
 
         # left click jumps to x-value, right-click displays popup
@@ -501,6 +601,7 @@ if __name__ == "__main__":
 
     try:
         window.view.show()
+        print("END:", time.time())
     except e:
         raise Exception("Oops, something went wrong: " + e.msg)
     app.exec_()

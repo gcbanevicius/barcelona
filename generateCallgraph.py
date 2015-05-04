@@ -41,6 +41,7 @@ def parseAbsoluteTimes(tuples, startTime=0, plotSpan=5000.0):
 
             # check if last entry in log
             if i == (lenTuples - 1):
+                currTime = tuples[i][2]
                 #methodTup = (currName, float(currTime), float("+inf"), depth, currDirection)
                 methodTup = (currName, float(currTime), float(endTime), depth, currDirection)
                 methodTups.append(methodTup)
@@ -52,6 +53,7 @@ def parseAbsoluteTimes(tuples, startTime=0, plotSpan=5000.0):
                     nextTime = endTime
                 else:
                     nextTime = tuples[i+1][2] 
+                nextTime = max(currTime, nextTime)
                 methodTup = (currName, float(currTime), float(nextTime), depth, currDirection)
                 methodTups.append(methodTup)
                 if DO_PRINT: print_helper("Entr", depth, methodTup)
@@ -67,6 +69,7 @@ def parseAbsoluteTimes(tuples, startTime=0, plotSpan=5000.0):
                     nextTime = endTime
                 else:
                     nextTime = tuples[i+1][2] 
+                nextTime = max(currTime, nextTime)
                 methodTup = (currName, float(currTime), float(nextTime), 0, "Enter") #currDirection)
                 methodTups.append(methodTup)
                 if DO_PRINT: print_helper("Exit", depth, methodTup)
@@ -93,6 +96,7 @@ def parseAbsoluteTimes(tuples, startTime=0, plotSpan=5000.0):
                 depth -= 1
                 continue
 
+            nextTime = max(currTime, nextTime)
             methodTup = (currName, float(currTime), float(nextTime), depth, currDirection)
             methodTups.append(methodTup)
             if DO_PRINT: print_helper("Exit", depth, methodTup)
