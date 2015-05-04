@@ -11,15 +11,14 @@ def adjustTime(time, startTime):
 
 def print_helper(direction, depth, tup):
     tab = "  "
-    #print(tab*depth + direction + " " + str(tup))
     print(tab*depth + str(tup))
 
-def parseAbsoluteTimes(tuples, startTime=0, plotSpan=5000.0):
+def parseAbsoluteTimes(tuples, startTime=0, windowSize=5000.0):
    
     DO_PRINT = False
     #DO_PRINT = True
 
-    endTime = startTime+float(plotSpan)
+    endTime = startTime+float(windowSize)
 
     callStack = ["---"]
     methodTups = []
@@ -42,7 +41,6 @@ def parseAbsoluteTimes(tuples, startTime=0, plotSpan=5000.0):
             # check if last entry in log
             if i == (lenTuples - 1):
                 currTime = tuples[i][2]
-                #methodTup = (currName, float(currTime), float("+inf"), depth, currDirection)
                 methodTup = (currName, float(currTime), float(endTime), depth, currDirection)
                 methodTups.append(methodTup)
                 if DO_PRINT: print_helper("Entr", depth, methodTup)
@@ -79,13 +77,11 @@ def parseAbsoluteTimes(tuples, startTime=0, plotSpan=5000.0):
             currName = callStack[-1]
 
             if  i == (lenTuples - 1):
-                #methodTup = (currName, float(currTime), float("+inf"), depth, currDirection)
                 methodTup = (currName, float(currTime), float(endTime), depth, currDirection)
                 methodTups.append(methodTup)
                 if DO_PRINT: print_helper("Exit", depth, methodTup)
                 continue
 
-            #else:
             currTime = tuples[i][2]
             if tuples[i+1][2] > endTime:
                 nextTime = endTime
@@ -105,9 +101,9 @@ def parseAbsoluteTimes(tuples, startTime=0, plotSpan=5000.0):
 
     return methodTups
 
-def parseInputFile(inputFileName, startTime=0, plotSpan=5000):
+def parseInputFile(inputFileName, startTime=0, windowSize=5000):
 
-    endTime = startTime+plotSpan
+    endTime = startTime+windowSize
 
     clockStartTime = -1L
     finalLineTups = []
